@@ -20,7 +20,6 @@ func main() {
 		log.Fatalf("cannot launch  doorman, cannot write to file system: %s", err)
 	}
 	D = NewDoorman(NewDefaultProcFactory())
-	D.RegisterHandlers()
 	D.Start()
 }
 

@@ -11,15 +11,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7/pkg/notification"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"southwinds.dev/artisan/data"
 	"southwinds.dev/artisan/release"
-	"southwinds.dev/doorman/db"
+	notify "southwinds.dev/notify/client"
 	resx "southwinds.dev/os"
+	src "southwinds.dev/source_client"
+	"southwinds.dev/types/doorman"
 	"strings"
 	"time"
 
@@ -27,9 +29,6 @@ import (
 	"southwinds.dev/artisan/core"
 	"southwinds.dev/artisan/merge"
 	"southwinds.dev/artisan/registry"
-	"southwinds.dev/doorman/types"
-	util "southwinds.dev/http"
-	"southwinds.dev/interlink-client"
 )
 
 const (
@@ -44,63 +43,41 @@ type Process struct {
 	folderName string
 	tmp        string
 	log        *bytes.Buffer
-	db         db.Database
 	reg        *registry.LocalRegistry
 	spec       *release.Spec
 	jobNo      string
 	cmdLog     string
-	pipe       *types.Pipeline
-	ox         *ilink.Client
+	pipe       *doorman.Pipeline
+	notif      *notify.Client
+	src        *src.Client
 }
 
-func NewProcess(serviceId, bucketPath, folderName, artHome string) (Processor, error) {
+func NewProcess(serviceId, bucketPath, folderName, artHome string, src *src.Client) (Processor, error) {
 	p := new(Process)
 	p.serviceId = serviceId
 	p.bucketName = bucketPath
 	p.folderName = folderName
 	p.log = new(bytes.Buffer)
-	p.db = *db.New()
 	p.reg = registry.NewLocalRegistry(artHome)
-	// if an Onix Web API is defined
-	if len(os.Getenv(OxWapiUri)) > 0 {
-		oxClient, err := newOxClient()
-		if err != nil {
-			return nil, err
-		}
-		p.ox = oxClient
+	p.src = src
+	uri, err := GetNotificationURI()
+	if err != nil {
+		return nil, fmt.Errorf("missing %s", NotificationURI)
 	}
+	user, err := GetNotificationUser()
+	if err != nil {
+		return nil, fmt.Errorf("missing %s", NotificationUser)
+	}
+	pwd, err := GetNotificationPwd()
+	if err != nil {
+		return nil, fmt.Errorf("missing %s", NotificationPwd)
+	}
+	p.notif = notify.New(uri, user, pwd)
 	return p, nil
 }
 
-func newOxClient() (*ilink.Client, error) {
-	uri, err := GetOxWapiUri()
-	if err != nil {
-		return nil, err
-	}
-	user, err := GetOxWapiUser()
-	if err != nil {
-		return nil, err
-	}
-	pwd, err := GetOxWapiPwd()
-	if err != nil {
-		return nil, err
-	}
-	skip, err := GetOxWapiInsecureSkipVerify()
-	if err != nil {
-		return nil, err
-	}
-	oxcfg := &ilink.ClientConf{
-		BaseURI:            uri,
-		Username:           user,
-		Password:           pwd,
-		InsecureSkipVerify: skip,
-	}
-	oxcfg.SetAuthMode("basic")
-	ox, err := ilink.NewClient(oxcfg)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create interlink http client: %s", err)
-	}
-	return ox, err
+func (p *Process) Src() *src.Client {
+	return p.src
 }
 
 // Info logger
@@ -157,7 +134,7 @@ func (p *Process) run() {
 		}
 	}()
 	p.Info("processing release Id=%s → %s/%s", p.serviceId, p.bucketName, p.folderName)
-	pipes, err := p.db.MatchPipelines(p.serviceId, p.bucketName)
+	pipes, err := p.MatchPipelines(p.serviceId, p.bucketName)
 	if err != nil {
 		e := p.Error("cannot retrieve pipelines for bucket Id='%s' and bucket name='%s': %s\n", p.serviceId, p.bucketName, err)
 		fmt.Println(e)
@@ -172,24 +149,22 @@ func (p *Process) run() {
 		// set the current pipeline
 		p.pipe = &pipes[i]
 		// record the start of a new job and obtains a new job number
-		jobNo, startTime, jobErr := StartJob(&pipe, p)
-		if jobErr != nil {
-			p.notify(jobErr)
-		}
+		jobNo := uuid.New().String()
+		startedTime := time.Now().UTC()
 		p.jobNo = jobNo
 		// process the pipeline
 		err = p.Pipeline(&pipe)
 		// if there was an error
 		if err != nil {
 			// record the job as failed passing the logs
-			jobErr = FailJob(startTime, &pipe, p)
+			jobErr := LogJob(&pipe, p, jobNo, &startedTime, "failed")
 			if jobErr != nil {
 				p.notify(jobErr)
 			}
 			p.notify(err)
 		}
 		// if no error, record the job as completed passing the logs
-		jobErr = CompleteJob(startTime, &pipe, p)
+		jobErr := LogJob(&pipe, p, jobNo, &startedTime, "succeeded")
 		if jobErr != nil {
 			p.notify(jobErr)
 		}
@@ -199,7 +174,7 @@ func (p *Process) run() {
 }
 
 // Pipeline process a pipeline
-func (p *Process) Pipeline(pipe *types.Pipeline) error {
+func (p *Process) Pipeline(pipe *doorman.Pipeline) error {
 	defer p.cleanup()
 	// create a new temp folder for processing, uses the artisan home specified in the registry
 	// in order to be able to parallelize processes, the artisan home must be different for each instance of Process
@@ -231,7 +206,7 @@ func (p *Process) Pipeline(pipe *types.Pipeline) error {
 }
 
 // InboundRoute process an inbound route
-func (p *Process) InboundRoute(pipe *types.Pipeline, route types.InRoute) error {
+func (p *Process) InboundRoute(pipe *doorman.Pipeline, route doorman.InRoute) error {
 	// download spec
 	p.Info("downloading specification: started")
 	spec, err := release.DownloadSpec(
@@ -264,11 +239,11 @@ func (p *Process) InboundRoute(pipe *types.Pipeline, route types.InRoute) error 
 	return p.ImportFiles()
 }
 
-func (p *Process) PreImport(route types.InRoute, err error) error {
+func (p *Process) PreImport(_ doorman.InRoute, _ error) error {
 	return nil
 }
 
-func (p *Process) Command(command types.Command) error {
+func (p *Process) Command(command doorman.Command) error {
 	c := strings.ReplaceAll(command.Value, "${path}", p.tmp)
 	p.Info("executing verification task: %s", c)
 	out, exeErr := build.ExeAsync(c, ".", merge.NewEnVarFromSlice([]string{}), false)
@@ -301,7 +276,7 @@ func (p *Process) Command(command types.Command) error {
 }
 
 // OutboundRoute process an outbound route
-func (p *Process) OutboundRoute(outRoute types.OutRoute) error {
+func (p *Process) OutboundRoute(outRoute doorman.OutRoute) error {
 	p.Info("processing outbound route %s: started", outRoute.Name)
 	if outRoute.S3Store != nil {
 		if err := p.ExportFiles(outRoute.S3Store); err != nil {
@@ -323,7 +298,7 @@ func (p *Process) OutboundRoute(outRoute types.OutRoute) error {
 }
 
 // PushImages to a target container registry
-func (p *Process) PushImages(imageRegistry *types.ImageRegistry) error {
+func (p *Process) PushImages(imageRegistry *doorman.ImageRegistry) error {
 	// tagging images & pushing
 	p.Info("tagging and pushing images to docker registry: started")
 	userPwd := fmt.Sprintf("%s:%s", imageRegistry.User, imageRegistry.Pwd)
@@ -346,7 +321,7 @@ func (p *Process) PushImages(imageRegistry *types.ImageRegistry) error {
 }
 
 // PushPackages packages to an Artisan registry
-func (p *Process) PushPackages(pkgRegistry *types.PackageRegistry) error {
+func (p *Process) PushPackages(pkgRegistry *doorman.PackageRegistry) error {
 	// tagging artefacts & pushing
 	p.Info("tagging and pushing artefacts to package registry: started")
 	userPwd := fmt.Sprintf("%s:%s", pkgRegistry.User, pkgRegistry.Pwd)
@@ -368,7 +343,7 @@ func (p *Process) PushPackages(pkgRegistry *types.PackageRegistry) error {
 }
 
 // ExportFiles a spec to S3
-func (p *Process) ExportFiles(s3Store *types.S3Store) error {
+func (p *Process) ExportFiles(s3Store *doorman.S3Store) error {
 	// export packages
 	p.Info("exporting packages: started")
 	spec, err := release.NewSpec(p.tmp, "")
@@ -421,18 +396,18 @@ func (p *Process) ImportFiles() error {
 }
 
 // SendNotification send a notification
-func (p *Process) SendNotification(nType db.NotificationType) error {
+func (p *Process) SendNotification(nType NotificationType) error {
 	// pipe must have a value
 	if p.pipe == nil {
 		return fmt.Errorf("cannot send notification, pipeline is not set")
 	}
-	var n *types.PipeNotification
+	var n *doorman.PipeNotification
 	switch nType {
-	case db.SuccessNotification:
+	case SuccessNotification:
 		n = p.pipe.SuccessNotification
-	case db.CmdFailedNotification:
+	case CmdFailedNotification:
 		n = p.pipe.CmdFailedNotification
-	case db.ErrorNotification:
+	case ErrorNotification:
 		n = p.pipe.ErrorNotification
 	default:
 		return fmt.Errorf("notification type %s is not supported", nType)
@@ -465,7 +440,7 @@ func (p *Process) SendNotification(nType db.NotificationType) error {
 	content = strings.ReplaceAll(content, "<<release-artefacts>>", buf.String())
 	content = strings.ReplaceAll(content, "<<issue-log>>", p.issueLog())
 	content = strings.ReplaceAll(content, "<<command-log>>", p.cmdLog)
-	return postNotification(NotificationMsg{
+	return p.notif.Notify(notify.NotificationMsg{
 		Recipient: n.Recipient,
 		Type:      n.Type,
 		Subject:   subject,
@@ -474,7 +449,7 @@ func (p *Process) SendNotification(nType db.NotificationType) error {
 }
 
 // BeforeComplete run any additional tasks before completing the processing of the pipeline
-func (p *Process) BeforeComplete(pipe *types.Pipeline) error {
+func (p *Process) BeforeComplete(pipe *doorman.Pipeline) error {
 	// catalogue submission
 	if p.pipe.CMDB != nil {
 		if p.pipe.CMDB.Catalogue {
@@ -500,29 +475,29 @@ func (p *Process) BeforeComplete(pipe *types.Pipeline) error {
 	return nil
 }
 
-type NotificationMsg struct {
-	// Recipient of the notification if type is email
-	Recipient string `yaml:"recipient" json:"recipient" example:"info@email.com"`
-	// Type of the notification (e.g. email, snow, etc.)
-	Type string `yaml:"type" json:"type" example:"email"`
-	// Subject of the notification
-	Subject string `yaml:"subject" json:"subject" example:"New Notification"`
-	// Content of the template
-	Content string `yaml:"content" json:"content" example:"A new event has been received."`
-}
+// type NotificationMsg struct {
+//     // Recipient of the notification if type is email
+//     Recipient string `yaml:"recipient" json:"recipient" example:"info@email.com"`
+//     // Type of the notification (e.g. email, snow, etc.)
+//     Type string `yaml:"type" json:"type" example:"email"`
+//     // Subject of the notification
+//     Subject string `yaml:"subject" json:"subject" example:"New Notification"`
+//     // Content of the template
+//     Content string `yaml:"content" json:"content" example:"A new event has been received."`
+// }
 
-func (m NotificationMsg) Valid() error {
-	if len(m.Subject) == 0 {
-		return fmt.Errorf("subject is required")
-	}
-	if len(m.Content) == 0 {
-		return fmt.Errorf("content is required")
-	}
-	if len(m.Recipient) == 0 {
-		return fmt.Errorf("recipient is required")
-	}
-	return nil
-}
+// func (m NotificationMsg) Valid() error {
+//     if len(m.Subject) == 0 {
+//         return fmt.Errorf("subject is required")
+//     }
+//     if len(m.Content) == 0 {
+//         return fmt.Errorf("content is required")
+//     }
+//     if len(m.Recipient) == 0 {
+//         return fmt.Errorf("recipient is required")
+//     }
+//     return nil
+// }
 
 // utilities
 
@@ -567,45 +542,6 @@ func (p *Process) cleanup() {
 	_ = os.RemoveAll(p.tmp)
 }
 
-func postNotification(n NotificationMsg) error {
-	content, err := json.Marshal(n)
-	if err != nil {
-		return err
-	}
-	uri, err := GetNotificationURI()
-	if err != nil {
-		return err
-	}
-	requestURI := fmt.Sprintf("%s/notify", uri)
-	req, err := http.NewRequest("POST", requestURI, bytes.NewReader(content))
-	if err != nil {
-		return fmt.Errorf("cannot create http request: %s", err)
-	}
-	user, err := GetNotificationUser()
-	if err != nil {
-		return fmt.Errorf("missing configuration")
-	}
-	pwd, err := GetNotificationPwd()
-	if err != nil {
-		return fmt.Errorf("missing configuration")
-	}
-	req.Header.Add("Authorization", util.BasicToken(user, pwd))
-	req.Header.Add("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	// do we have a nil response?
-	if resp == nil {
-		return fmt.Errorf("response was empty for resource: %s", requestURI)
-	}
-	// check error status codes
-	if resp.StatusCode > 201 {
-		return fmt.Errorf("response returned status: %s; resource: %s", resp.Status, requestURI)
-	}
-	return nil
-}
-
 // notify of an error
 func (p *Process) notify(err error) {
 	// if there is an error
@@ -613,19 +549,19 @@ func (p *Process) notify(err error) {
 		// if there is no command related log recorded
 		if len(p.cmdLog) == 0 {
 			// send an error notification
-			if err = p.SendNotification(db.ErrorNotification); err != nil {
+			if err = p.SendNotification("ErrorNotification"); err != nil {
 				fmt.Printf("cannot send error notification: %s\n", err)
 			}
 		} else {
 			// otherwise send a command failed notification
-			if err = p.SendNotification(db.CmdFailedNotification); err != nil {
+			if err = p.SendNotification("CmdFailedNotification"); err != nil {
 				fmt.Printf("cannot send command failed notification: %s\n", err)
 			}
 			p.cmdLog = ""
 		}
 	} else { // if there is not an error
 		// sends a success notification
-		if err = p.SendNotification(db.SuccessNotification); err != nil {
+		if err = p.SendNotification("SuccessNotification"); err != nil {
 			fmt.Printf("cannot send success notification: %s\n", err)
 		}
 	}
@@ -636,7 +572,7 @@ func (p *Process) artHome() string {
 }
 
 // submitSpec to cmdb
-func (p *Process) submitSpec(cmdb *types.CMDB) error {
+func (p *Process) submitSpec(cmdb *doorman.CMDB) error {
 	p.Info("submit spec to cmdb: started")
 	defer p.Info("submit spec to cmdb: complete")
 	// prepares spec attributes
@@ -659,27 +595,22 @@ func (p *Process) submitSpec(cmdb *types.CMDB) error {
 			p.Warn("cannot unmarshal spec to map: %s", err)
 		}
 	}
-	// send spec to cmdb
-	result, oxErr := p.ox.PutItem(&ilink.Item{
-		Key:         catalogueName(p.spec),
-		Name:        p.spec.Name,
-		Description: p.spec.Description,
-		Type:        UCatalogueType,
-		Tag:         toTags(cmdb.Tag),
-		Meta:        specMap,
-		Attribute:   attrs,
-	})
-	if oxErr != nil {
-		if result != nil {
-			return p.Error("cannot put spec to cmdb: %s, %s", result.Message, oxErr)
-		}
-		return p.Error("cannot put spec to cmdb: %s", oxErr)
+	catalogueItem := &CatalogueItem{
+		Name:       catalogueName(p.spec),
+		Spec:       p.spec,
+		Tags:       cmdb.Tag,
+		Attributes: attrs,
 	}
-	p.Info("spec submitted to cmdb, operation was %s, changed: %t", result.Operation, result.Changed)
+	// put catalogue item into source
+	err = p.src.Save(catalogueItem.Name, CatalogueItemType, catalogueItem)
+	if err != nil {
+		return p.Error("cannot put spec to cmdb: %s", err)
+	}
+	p.Info("spec submitted to source")
 	return nil
 }
 
-func (p *Process) submitSpecFx(cmdb *types.CMDB) error {
+func (p *Process) submitSpecFx(cmdb *doorman.CMDB) error {
 	if cmdb.Events != nil && len(cmdb.Events) > 0 {
 		p.Info("submit spec functions to cmdb: started")
 		defer p.Info("submit spec functions to cmdb: complete")
@@ -699,28 +630,21 @@ func (p *Process) submitSpecFx(cmdb *types.CMDB) error {
 				// if the event is in the spec
 				if strings.EqualFold(run.Event, event) {
 					found = true
-					meta, metaErr := toMetaInput(run.Input)
-					if metaErr != nil {
-						return p.Error("cannot construct spec function input: cannot submit spec function to cmdb", metaErr)
-					}
-					result, oxErr := p.ox.PutItem(&ilink.Item{
-						Key:         runFxName(run),
-						Name:        run.Function,
+					cmd := &Command{
+						Name:        fmt.Sprintf("ARTISAN CMD: %s", run.Function),
 						Description: fmt.Sprintf("%s - %s - %s", run.Package, run.Function, run.Event),
-						Type:        ArtSpecFxType,
-						Tag:         toTags(cmdb.Tag),
-						Attribute: map[string]interface{}{
-							"PACKAGE": run.Package,
-							"FX":      run.Function,
-							"USER":    artRegUser,
-							"PWD":     artRegPwd,
-						},
-						Meta: meta,
-					})
-					if oxErr != nil {
-						return p.Error("cannot put spec function %s (%s) to cmdb: %s, %s", run.Function, run.Event, result.Message, oxErr)
+						Package:     run.Package,
+						Function:    run.Function,
+						RegUser:     artRegUser,
+						RegPwd:      artRegPwd,
+						Input:       run.Input,
+						Tag:         cmdb.Tag,
 					}
-					p.Info("spec function %s (%s) submitted to cmdb, operation was %s, changed: %t", run.Function, run.Event, result.Operation, result.Changed)
+					err = p.src.Save(runFxName(run), ArtisanCommandType, cmd)
+					if err != nil {
+						return p.Error("cannot put spec function %s (%s) to cmdb: %s", run.Function, run.Event, err)
+					}
+					p.Info("spec function %s (%s) submitted to cmdb", run.Function, run.Event)
 				}
 			}
 			if !found {
@@ -775,7 +699,7 @@ func toTags(m []string) []interface{} {
 	return tag
 }
 
-func getARN(s3Store *types.S3Store) *notification.Arn {
+func getARN(s3Store *doorman.S3Store) *notification.Arn {
 	// work out default values for ARN
 	partition := s3Store.Partition
 	if len(partition) == 0 {

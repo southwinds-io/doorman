@@ -9,11 +9,19 @@ package main
 
 import (
 	"fmt"
-	"github.com/gorilla/mux"
+	"github.com/google/uuid"
+	"log"
+	"math"
 	"net/http"
-	"os"
+	"path/filepath"
+	c "southwinds.dev/artisan/core"
+	"southwinds.dev/artisan/release"
+	"southwinds.dev/d-proxy/types"
 	"southwinds.dev/doorman/core"
 	h "southwinds.dev/http"
+	src "southwinds.dev/source_client"
+	"southwinds.dev/types/doorman"
+	"strings"
 	"time"
 )
 
@@ -28,9 +36,8 @@ type HandlerInfo struct {
 }
 
 type Doorman struct {
-	Server   *h.Server
-	Handlers []HandlerInfo
-	Process  ProcFactory
+	Process ProcFactory
+	src     *src.Client
 }
 
 func NewDoorman(pf ProcFactory) *Doorman {
@@ -45,45 +52,190 @@ func NewDoorman(pf ProcFactory) *Doorman {
 %s
 
 `, core.Version)
+	s := src.New(core.GetSourceHost(), core.GetSourceUser(), core.GetSourcePwd(), &src.ClientOptions{
+		InsecureSkipVerify: true,
+		Timeout:            0,
+	})
+	s.Logger = new(core.RetryLogger)
 	return &Doorman{
-		Server:   h.New("DOORMAN", core.Version),
-		Handlers: Handlers(),
-		Process:  pf,
+		Process: pf,
+		src:     s,
 	}
 }
 
-// Start the registry http server
 func (d *Doorman) Start() {
-	d.Server.Serve()
+	interval := core.GetPollInterval()
+	if err := d.initConfig(); err != nil {
+		log.Fatalf(err.Error())
+	}
+	var (
+		release    *types.Release
+		anyRelease interface{}
+		err        error
+	)
+	for {
+		anyRelease, err = d.src.PopOldest("DOORMAN_RELEASE", new(types.Release))
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+		// if no release was found
+		if anyRelease.(*src.I) == nil {
+			c.Debug("no release found, retrying later in %v...", interval)
+			// wait for a while
+			time.Sleep(core.GetPollInterval())
+			// then try again
+			continue
+		} else {
+			release = anyRelease.(*types.Release)
+		}
+		// creates a dedicated, randomly named artisan local registry home
+		artHome, artHomeErr := newArtHome()
+		if artHomeErr != nil {
+			log.Fatalf("cannot create artisan home: %s, cannot continue", err)
+		}
+		// creates a new process running using the dedicated registry
+		proc, e := D.Process.New(release.DeploymentId, release.BucketName, release.FolderName, artHome, D.src)
+		if e != nil {
+			c.ErrorLogger.Printf("cannot create pipeline processor: %s", e)
+		}
+		// starts the process asynchronously
+		proc.Start()
+	}
 }
 
-// RegisterHandlers register the http handlers for the registry
-func (d *Doorman) RegisterHandlers() {
-	d.Server.Http = func(router *mux.Router) {
-		// enable encoded path  vars
-		router.UseEncodedPath()
-		// conditionally enable middleware
-		if len(os.Getenv(DoormanLogging)) > 0 {
-			router.Use(d.Server.LoggingMiddleware)
-		}
-		// apply authentication
-		router.Use(d.Server.AuthenticationMiddleware)
-		// register handlers
-		for _, handler := range d.Handlers {
-			router.HandleFunc(handler.Path, handler.Handler).Methods(handler.Methods...)
-		}
+func (d *Doorman) initConfig() error {
+	// pipelines
+	if err := d.src.SetType(doorman.PipelineType, doorman.PipelineConf{
+		Name:           "sample-pipeline",
+		InboundRoutes:  []string{"sample-inbound-route"},
+		OutboundRoutes: []string{"sample-outbound-route"},
+		Commands:       []string{"sample-command"},
+		CMDB: &doorman.CMDB{
+			Catalogue: false,
+			Events:    []string{"sample-event"},
+			Tag:       []string{"tag-1", "tag-2"},
+		},
+		SuccessNotification:   "success-notification",
+		ErrorNotification:     "error-notification",
+		CmdFailedNotification: "cmd-failed-notification",
+	}); err != nil {
+		return fmt.Errorf("cannot set pipeline type in source: %s", err)
 	}
-	// grab a reference to default auth to use it in the proxy override below
-	defaultAuth = d.Server.DefaultAuth
-	// set up specific authentication for doorman proxy
-	d.Server.Auth = map[string]func(http.Request) *h.UserPrincipal{
-		"^/token.*":  dProxyAuth,
-		"^/event/.*": dProxyAuth,
+	if err := d.src.SetType(doorman.InboundRouteType, doorman.InRoute{
+		Name:             "",
+		Description:      "",
+		ServiceHost:      "",
+		ServiceId:        "",
+		BucketName:       "",
+		User:             "",
+		Pwd:              "",
+		Verify:           false,
+		WebhookToken:     "",
+		WebhookWhitelist: nil,
+		Filter:           "",
+	}); err != nil {
+		return fmt.Errorf("cannot set inbound route type in source: %s", err)
 	}
+	if err := d.src.SetType(doorman.OutboundRouteType, doorman.OutRoute{
+		Name:        "SAMPLE-OUT-ROUTE",
+		Description: "this is a sample outbound route",
+		PackageRegistry: &doorman.PackageRegistry{
+			Domain: "packages.sample.com",
+			Group:  "sample-group",
+			User:   "sample-user",
+			Pwd:    "sample-pwd",
+		},
+		ImageRegistry: &doorman.ImageRegistry{
+			Domain: "images.sample.com",
+			Group:  "sample-group",
+			User:   "sample-user",
+			Pwd:    "sample-pwd",
+		},
+		S3Store: &doorman.S3Store{
+			BucketURI: "s3.sample.com/sample-bucket",
+			User:      "sample-user",
+			Pwd:       "sample-pwd",
+			Partition: "",
+			Service:   "",
+			Region:    "",
+			AccountID: "",
+			Resource:  "",
+		},
+	}); err != nil {
+		return fmt.Errorf("cannot set outbound route type in source: %s", err)
+	}
+	if err := d.src.SetType(doorman.CommandType, doorman.Command{
+		Name:        "SAMPLE-COMMAND",
+		Description: "This is a command run by Doorman",
+		Value:       "scan files",
+		ErrorRegex:  "",
+		StopOnError: false,
+	}); err != nil {
+		return fmt.Errorf("cannot set command type in source: %s", err)
+	}
+	if err := d.src.SetType(doorman.NotificationTemplateType, doorman.NotificationTemplate{
+		Name:    "SAMPLE-SUCCESS-TEMPLATE",
+		Subject: "Hello there",
+		Content: "everything has gone ok",
+	}); err != nil {
+		return fmt.Errorf("cannot set notification template type in source: %s", err)
+	}
+	if err := d.src.SetType(doorman.NotificationType, doorman.Notification{
+		Name:      "SUCCESSFUL_RELEASE_NOTIFICATION",
+		Recipient: "test@email.com",
+		Type:      "email",
+		Template:  "NEW_RELEASE_TEMPLATE",
+	}); err != nil {
+		return fmt.Errorf("cannot set notification type in source: %s", err)
+	}
+	// catalogue items
+	if err := d.src.SetType(core.CatalogueItemType, core.CatalogueItem{
+		Name: "",
+		Spec: &release.Spec{
+			Name:        "",
+			Description: "",
+			Author:      "",
+			License:     "",
+			Version:     "",
+			Info:        "",
+			Images:      nil,
+			Packages:    nil,
+			OsPackages:  nil,
+			Run:         nil,
+		},
+		Tags:       nil,
+		Attributes: nil,
+	}); err != nil {
+		return fmt.Errorf("cannot set catalogue item type in source: %s", err)
+	}
+	// commands
+	if err := d.src.SetType(core.ArtisanCommandType, core.Command{
+		Name:        "",
+		Description: "",
+		Package:     "",
+		Function:    "",
+		RegUser:     "",
+		RegPwd:      "",
+		Input:       nil,
+		Tag:         nil,
+	}); err != nil {
+		return fmt.Errorf("cannot set command type in source: %s", err)
+	}
+	return nil
+}
+
+// backoffTime exponentially increase backoff time until reaching 1 hour
+func backoffTime(attempts int) time.Duration {
+	var exponentialBackoffCeilingSecs int64 = 3600 // 1 hour
+	delaySecs := int64(math.Floor((math.Pow(2, float64(attempts)) - 1) * 0.5))
+	if delaySecs > exponentialBackoffCeilingSecs {
+		delaySecs = exponentialBackoffCeilingSecs
+	}
+	return time.Duration(delaySecs) * time.Second
 }
 
 type ProcFactory interface {
-	New(serviceId, bucketPath, folderName, artHome string) (core.Processor, error)
+	New(serviceId, bucketPath, folderName, artHome string, src *src.Client) (core.Processor, error)
 }
 
 func NewDefaultProcFactory() ProcFactory {
@@ -93,56 +245,17 @@ func NewDefaultProcFactory() ProcFactory {
 type DefaultProcFactory struct {
 }
 
-func (df *DefaultProcFactory) New(serviceId, bucketPath, folderName, artHome string) (core.Processor, error) {
-	return core.NewProcess(serviceId, bucketPath, folderName, artHome)
+func (df *DefaultProcFactory) New(serviceId, bucketPath, folderName, artHome string, src *src.Client) (core.Processor, error) {
+	return core.NewProcess(serviceId, bucketPath, folderName, artHome, src)
 }
 
-func Handlers() []HandlerInfo {
-	return []HandlerInfo{
-		// admin facing endpoints
-		{"/key", upsertKeyHandler, []string{http.MethodPut}},
-		{"/command", upsertCommandHandler, []string{http.MethodPut}},
-		{"/route/in", upsertInboundRouteHandler, []string{http.MethodPut}},
-		{"/route/out", upsertOutboundRouteHandler, []string{http.MethodPut}},
-		{"/notification", upsertNotificationHandler, []string{http.MethodPut}},
-		{"/notification", getAllNotificationsHandler, []string{http.MethodGet}},
-		{"/notification-template", upsertNotificationTemplateHandler, []string{http.MethodPut}},
-		{"/notification-template", getAllNotificationTemplatesHandler, []string{http.MethodPut}},
-		{"/pipe", upsertPipelineHandler, []string{http.MethodPut}},
-		{"/pipe/{name}", getPipelineHandler, []string{http.MethodGet}},
-		{"/pipe", getAllPipelinesHandler, []string{http.MethodGet}},
-		{"/job", getTopJobsHandler, []string{http.MethodGet}},
-		// doorman proxy facing endpoints
-		{"/event/{service-id}/{bucket-name}/{folder-name}", eventHandler, []string{http.MethodPost}},
-		{"/token/{token-value}", getWebhookAuthInfoHandler, []string{http.MethodGet}},
-		{"/token", getWebhookAllAuthInfoHandler, []string{http.MethodGet}},
+// newArtHome generates a new random path for the artisan home
+func newArtHome() (string, error) {
+	path := filepath.Join(c.HomeDir(), ".doorman", strings.Replace(uuid.NewString(), "-", "", -1)[:12])
+	err := c.EnsureRegistryPath(path)
+	if err != nil {
+		return "", err
 	}
-}
-
-// dProxyAuth authenticates doorman's proxy requests using either proxy specific or admin credentials
-func dProxyAuth(r http.Request) *h.UserPrincipal {
-	user, userErr := core.GetProxyUser()
-	if userErr != nil {
-		fmt.Printf("cannot authenticate proxy: %s", userErr)
-		return nil
-	}
-	pwd, pwdErr := core.GetProxyPwd()
-	if pwdErr != nil {
-		fmt.Printf("cannot authenticate proxy: %s", pwdErr)
-		return nil
-	}
-	// try proxy specific credentials first
-	if r.Header.Get("Authorization") == h.BasicToken(user, pwd) {
-		return &h.UserPrincipal{
-			Username: user,
-			Created:  time.Now(),
-		}
-	} else if defaultAuth != nil {
-		// try admin credentials
-		if principal := defaultAuth(r); principal != nil {
-			return principal
-		}
-	}
-	// otherwise, fail authentication
-	return nil
+	c.Debug("the local registry home is: '%s'\n", path)
+	return path, nil
 }

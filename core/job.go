@@ -8,70 +8,46 @@
 package core
 
 import (
-	"context"
-	"github.com/google/uuid"
-	"go.mongodb.org/mongo-driver/mongo"
-	"southwinds.dev/doorman/db"
+	"fmt"
+	"southwinds.dev/artisan/core"
 	"southwinds.dev/doorman/types"
+	"southwinds.dev/os"
+	"southwinds.dev/types/doorman"
+	"strings"
 	"time"
 )
 
-func StartJob(pipeline *types.Pipeline, process *Process) (string, *time.Time, error) {
-	jobNo := uuid.New().String()
-	startTime := time.Now().UTC()
-	_, err := process.db.InsertObject(types.JobsCollection, &types.Job{
+func LogJob(pipeline *doorman.Pipeline, process *Process, jobNo string, started *time.Time, status string) error {
+	completed := time.Now().UTC()
+	job := &types.Job{
 		Number:    jobNo,
 		ServiceId: process.serviceId,
 		Bucket:    process.bucketName,
 		Folder:    process.folderName,
 		Pipeline:  pipeline,
-		Status:    "started",
-		Started:   &startTime,
-	})
-	if err != nil {
-		return "", nil, err
-	}
-	return jobNo, &startTime, nil
-}
-
-func CompleteJob(started *time.Time, pipeline *types.Pipeline, process *Process) error {
-	completedTime := time.Now().UTC()
-	_, err, _ := process.db.UpsertObject(types.JobsCollection, &types.Job{
-		Number:    process.jobNo,
-		ServiceId: process.serviceId,
-		Bucket:    process.bucketName,
-		Folder:    process.folderName,
-		Status:    "completed",
-		Pipeline:  pipeline,
-		Log:       process.logs(),
+		Status:    status,
 		Started:   started,
-		Completed: &completedTime,
-	})
-	return err
-}
-
-func FailJob(started *time.Time, pipeline *types.Pipeline, process *Process) error {
-	completedTime := time.Now().UTC()
-	_, err, _ := process.db.UpsertObject(types.JobsCollection, &types.Job{
-		Number:    process.jobNo,
-		ServiceId: process.serviceId,
-		Bucket:    process.bucketName,
-		Folder:    process.folderName,
-		Status:    "failed",
-		Pipeline:  pipeline,
-		Log:       process.logs(),
-		Started:   started,
-		Completed: &completedTime,
-	})
-	return err
-}
-
-func FindTopJobs(count int, db *db.Database) ([]types.Job, error) {
-	var jobs []types.Job
-	if err := db.FindMany(types.JobsCollection, nil, func(cursor *mongo.Cursor) error {
-		return cursor.All(context.TODO(), &jobs)
-	}); err != nil {
-		return nil, err
+		Completed: &completed,
 	}
-	return jobs, nil
+	uri := GetS3URI()
+	// if an S3 URI has been defined
+	if len(uri) > 0 && strings.Contains(uri, "s3") {
+		user, err := GetS3User()
+		if err != nil {
+			return err
+		}
+		pwd, err := GetS3Pwd()
+		if err != nil {
+			return err
+		}
+		// write the job data to S3
+		return os.WriteFile(
+			job.Bytes(),
+			fmt.Sprintf("%s/%s", uri, time.Now().Format(time.RFC3339)),
+			fmt.Sprintf("%s:%s", user, pwd))
+	} else {
+		// otherwise write to stdout
+		core.InfoLogger.Printf("%s\n", job)
+	}
+	return nil
 }

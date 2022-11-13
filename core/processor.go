@@ -8,8 +8,7 @@
 package core
 
 import (
-	"southwinds.dev/doorman/db"
-	"southwinds.dev/doorman/types"
+	"southwinds.dev/types/doorman"
 )
 
 type Processor interface {
@@ -17,37 +16,37 @@ type Processor interface {
 	Start()
 
 	// Pipeline executes a pipeline
-	Pipeline(pipe *types.Pipeline) error
+	Pipeline(pipe *doorman.Pipeline) error
 
 	// InboundRoute executes an inbound route in a pipeline
-	InboundRoute(pipe *types.Pipeline, route types.InRoute) error
+	InboundRoute(pipe *doorman.Pipeline, route doorman.InRoute) error
 
 	// PreImport runs pre import checks
-	PreImport(route types.InRoute, err error) error
+	PreImport(route doorman.InRoute, err error) error
 
 	// Command executes the specified command
-	Command(command types.Command) error
+	Command(command doorman.Command) error
 
 	// OutboundRoute execute the outbound route
-	OutboundRoute(outRoute types.OutRoute) error
+	OutboundRoute(outRoute doorman.OutRoute) error
 
 	// ExportFiles from a specification to an S3 bucket
-	ExportFiles(s3Store *types.S3Store) error
+	ExportFiles(s3Store *doorman.S3Store) error
 
 	// PushImages in a specification to a container registry
-	PushImages(imageRegistry *types.ImageRegistry) error
+	PushImages(imageRegistry *doorman.ImageRegistry) error
 
 	// PushPackages in a specification to an artisan registry
-	PushPackages(pkgRegistry *types.PackageRegistry) error
+	PushPackages(pkgRegistry *doorman.PackageRegistry) error
 
 	// ImportFiles from a specification
 	ImportFiles() error
 
 	// SendNotification to the notification service
-	SendNotification(nType db.NotificationType) error
+	SendNotification(nType NotificationType) error
 
 	// BeforeComplete executes tasks at the end of the pipeline process
-	BeforeComplete(pipe *types.Pipeline) error
+	BeforeComplete(pipe *doorman.Pipeline) error
 
 	// Info logger
 	Info(format string, a ...interface{})

@@ -4,22 +4,25 @@ go 1.19
 
 replace (
 	southwinds.dev/artisan => ../artisan
+	southwinds.dev/d-proxy => ../d-proxy
 	southwinds.dev/http => ../http
-	southwinds.dev/interlink-client => ../interlink-client
+	southwinds.dev/notify/client => ../notify/client
 	southwinds.dev/os => ../os
+	southwinds.dev/source_client => ../source_client
+	southwinds.dev/types => ../types
 )
 
 require (
 	github.com/google/uuid v1.3.0
-	github.com/gorilla/mux v1.8.0
 	github.com/joho/godotenv v1.4.0
 	github.com/minio/minio-go/v7 v7.0.35
-	github.com/swaggo/swag v1.8.1
-	go.mongodb.org/mongo-driver v1.8.3
 	southwinds.dev/artisan v0.0.0-00010101000000-000000000000
-	southwinds.dev/http v0.0.0-20220831074207-face05fed3a2
-	southwinds.dev/interlink-client v0.0.0-00010101000000-000000000000
-	southwinds.dev/os v0.0.0-20220901065504-762d072c036a
+	southwinds.dev/d-proxy v0.0.0-00010101000000-000000000000
+	southwinds.dev/http v0.0.0-00010101000000-000000000000
+	southwinds.dev/notify/client v0.0.0-00010101000000-000000000000
+	southwinds.dev/os v0.0.0-00010101000000-000000000000
+	southwinds.dev/source_client v0.0.0-00010101000000-000000000000
+	southwinds.dev/types v0.0.0-00010101000000-000000000000
 )
 
 require (
@@ -33,7 +36,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/cheggaaa/pb/v3 v3.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
-	github.com/eclipse/paho.mqtt.golang v1.4.1 // indirect
 	github.com/emirpasic/gods v1.12.0 // indirect
 	github.com/fatih/color v1.10.0 // indirect
 	github.com/go-git/gcfg v1.5.0 // indirect
@@ -43,11 +45,13 @@ require (
 	github.com/go-openapi/jsonreference v0.20.0 // indirect
 	github.com/go-openapi/spec v0.20.6 // indirect
 	github.com/go-openapi/swag v0.19.15 // indirect
-	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/golang/snappy v0.0.1 // indirect
-	github.com/gorilla/websocket v1.4.2 // indirect
+	github.com/gorilla/mux v1.8.0 // indirect
+	github.com/hashicorp/go-cleanhttp v0.5.1 // indirect
+	github.com/hashicorp/go-retryablehttp v0.7.1 // indirect
+	github.com/iancoleman/orderedmap v0.0.0-20190318233801-ac98e3ecb4b0 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
+	github.com/invopop/jsonschema v0.6.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -69,7 +73,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/ohler55/ojg v1.12.5 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.13.0 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
@@ -80,15 +83,11 @@ require (
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/swaggo/files v0.0.0-20220610200504-28940afbdbfe // indirect
 	github.com/swaggo/http-swagger v1.3.3 // indirect
+	github.com/swaggo/swag v1.8.1 // indirect
 	github.com/xanzy/ssh-agent v0.3.1 // indirect
-	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
-	github.com/xdg-go/scram v1.0.2 // indirect
-	github.com/xdg-go/stringprep v1.0.2 // indirect
-	github.com/youmark/pkcs8 v0.0.0-20181117223130-1be2e3e5546d // indirect
 	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa // indirect
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
 	golang.org/x/net v0.0.0-20220722155237-a158d28d115b // indirect
-	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f // indirect
 	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/text v0.3.7 // indirect
