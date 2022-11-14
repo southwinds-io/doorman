@@ -11,6 +11,7 @@ import (
 	"log"
 	"path/filepath"
 	artCore "southwinds.dev/artisan/core"
+	"southwinds.dev/doorman/core"
 )
 
 var D *Doorman
@@ -20,7 +21,7 @@ func main() {
 	if err := checkDoormanHome(); err != nil {
 		log.Fatalf("cannot launch  doorman, cannot write to file system: %s", err)
 	}
-	D, err = NewDoorman(NewDefaultProcFactory())
+	D, err = NewDoorman(core.NewDefaultProcFactory())
 	if err != nil {
 		log.Fatalf(err.Error())
 	}

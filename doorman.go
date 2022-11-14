@@ -11,14 +11,11 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"log"
-	"math"
-	"net/http"
 	"path/filepath"
 	c "southwinds.dev/artisan/core"
 	"southwinds.dev/artisan/release"
 	"southwinds.dev/d-proxy/types"
 	"southwinds.dev/doorman/core"
-	h "southwinds.dev/http"
 	src "southwinds.dev/source_client"
 	"southwinds.dev/types/doorman"
 	"southwinds.dev/types/dproxy"
@@ -26,22 +23,12 @@ import (
 	"time"
 )
 
-const DoormanLogging = "DOORMAN_LOGGING"
-
-var defaultAuth func(r http.Request) *h.UserPrincipal
-
-type HandlerInfo struct {
-	Path    string
-	Handler func(w http.ResponseWriter, r *http.Request)
-	Methods []string
-}
-
 type Doorman struct {
-	Process ProcFactory
+	Process core.ProcFactory
 	proxy   *src.Client
 }
 
-func NewDoorman(pf ProcFactory) (*Doorman, error) {
+func NewDoorman(pf core.ProcFactory) (*Doorman, error) {
 	// https://textkool.com/en/ascii-art-generator?hl=default&vl=default&font=Broadway%20KB&text=dproxy%0A
 	fmt.Printf(`
 ++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -222,31 +209,6 @@ func (d *Doorman) initConfig() error {
 		return fmt.Errorf("cannot set command type in source: %s", err)
 	}
 	return nil
-}
-
-// backoffTime exponentially increase backoff time until reaching 1 hour
-func backoffTime(attempts int) time.Duration {
-	var exponentialBackoffCeilingSecs int64 = 3600 // 1 hour
-	delaySecs := int64(math.Floor((math.Pow(2, float64(attempts)) - 1) * 0.5))
-	if delaySecs > exponentialBackoffCeilingSecs {
-		delaySecs = exponentialBackoffCeilingSecs
-	}
-	return time.Duration(delaySecs) * time.Second
-}
-
-type ProcFactory interface {
-	New(serviceId, bucketPath, folderName, artHome string) (core.Processor, error)
-}
-
-func NewDefaultProcFactory() ProcFactory {
-	return new(DefaultProcFactory)
-}
-
-type DefaultProcFactory struct {
-}
-
-func (df *DefaultProcFactory) New(serviceId, bucketPath, folderName, artHome string) (core.Processor, error) {
-	return core.NewProcess(serviceId, bucketPath, folderName, artHome)
 }
 
 // newArtHome generates a new random path for the artisan home

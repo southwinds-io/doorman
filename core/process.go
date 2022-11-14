@@ -33,8 +33,6 @@ import (
 
 const (
 	DoormanLogging = "DOORMAN_LOGGING"
-	ArtSpecFxType  = "ART_SPEC_FX"
-	UCatalogueType = "U_CATALOGUE"
 )
 
 type Process struct {
@@ -50,15 +48,17 @@ type Process struct {
 	pipe       *doorman.Pipeline
 	notif      *notify.Client
 	src        *src.Client
+	vProc      data.VProc
 }
 
-func NewProcess(serviceId, bucketPath, folderName, artHome string) (Processor, error) {
+func NewProcess(serviceId, bucketPath, folderName, artHome string, vProc data.VProc) (Processor, error) {
 	p := new(Process)
 	p.serviceId = serviceId
 	p.bucketName = bucketPath
 	p.folderName = folderName
 	p.log = new(bytes.Buffer)
 	p.reg = registry.NewLocalRegistry(artHome)
+	p.vProc = vProc
 	s, err := getCfgClient()
 	if err != nil {
 		return nil, fmt.Errorf("cannot create proxy client: %s", err)
@@ -410,6 +410,7 @@ func (p *Process) ImportFiles() error {
 		release.ImportOptions{
 			TargetUri: p.tmp,
 			ArtHome:   p.artHome(),
+			VProc:     p.vProc,
 		})
 	if err != nil {
 		return p.Error("cannot import spec: %s", err)
