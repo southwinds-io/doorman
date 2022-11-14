@@ -24,13 +24,13 @@ func (p *Process) FindNotification(name string) (*doorman.PipeNotification, erro
 	if err != nil {
 		return nil, err
 	}
-	notif := result.(doorman.Notification)
+	notif := result.(*doorman.Notification)
 	// load the template
 	result, err = p.src.Load(notif.Template, new(doorman.NotificationTemplate))
 	if err != nil {
 		return nil, err
 	}
-	templ := result.(doorman.NotificationTemplate)
+	templ := result.(*doorman.NotificationTemplate)
 	return &doorman.PipeNotification{
 		Name:      notif.Name,
 		Recipient: notif.Recipient,

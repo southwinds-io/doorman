@@ -2,7 +2,7 @@
   "name": "TEST_IN_ROUTE",
   "description": "a testing inbound route",
   "service_host": "s3://127.0.0.1:9000",
-  "service_id": "415edcb3-16db-4f6d-828a-48c5bc33e01b",
+  "service_id": "55913ea4-454a-4d15-a8d4-2b669154ab77",
   "bucket_name": "*",
   "user": "admin",
   "pwd": "password",

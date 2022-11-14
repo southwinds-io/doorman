@@ -172,24 +172,24 @@ func (p *Process) run() {
 	}
 	for i, pipe := range pipes {
 		// set the current pipeline
-		p.pipe = &pipes[i]
+		p.pipe = pipes[i]
 		// record the start of a new job and obtains a new job number
 		jobNo := uuid.New().String()
 		startedTime := time.Now().UTC()
 		p.jobNo = jobNo
 		// process the pipeline
-		err = p.Pipeline(&pipe)
+		err = p.Pipeline(pipe)
 		// if there was an error
 		if err != nil {
 			// record the job as failed passing the logs
-			jobErr := LogJob(&pipe, p, jobNo, &startedTime, "failed")
+			jobErr := LogJob(pipe, p, jobNo, &startedTime, "failed")
 			if jobErr != nil {
 				p.notify(jobErr)
 			}
 			p.notify(err)
 		}
 		// if no error, record the job as completed passing the logs
-		jobErr := LogJob(&pipe, p, jobNo, &startedTime, "succeeded")
+		jobErr := LogJob(pipe, p, jobNo, &startedTime, "succeeded")
 		if jobErr != nil {
 			p.notify(jobErr)
 		}
@@ -231,7 +231,7 @@ func (p *Process) Pipeline(pipe *doorman.Pipeline) error {
 }
 
 // InboundRoute process an inbound route
-func (p *Process) InboundRoute(pipe *doorman.Pipeline, route doorman.InRoute) error {
+func (p *Process) InboundRoute(pipe *doorman.Pipeline, route *doorman.InRoute) error {
 	// download spec
 	p.Info("downloading specification: started")
 	spec, err := release.DownloadSpec(
@@ -264,11 +264,11 @@ func (p *Process) InboundRoute(pipe *doorman.Pipeline, route doorman.InRoute) er
 	return p.ImportFiles()
 }
 
-func (p *Process) PreImport(_ doorman.InRoute, _ error) error {
+func (p *Process) PreImport(_ *doorman.InRoute, _ error) error {
 	return nil
 }
 
-func (p *Process) Command(command doorman.Command) error {
+func (p *Process) Command(command *doorman.Command) error {
 	c := strings.ReplaceAll(command.Value, "${path}", p.tmp)
 	p.Info("executing verification task: %s", c)
 	out, exeErr := build.ExeAsync(c, ".", merge.NewEnVarFromSlice([]string{}), false)
@@ -301,7 +301,7 @@ func (p *Process) Command(command doorman.Command) error {
 }
 
 // OutboundRoute process an outbound route
-func (p *Process) OutboundRoute(outRoute doorman.OutRoute) error {
+func (p *Process) OutboundRoute(outRoute *doorman.OutRoute) error {
 	p.Info("processing outbound route %s: started", outRoute.Name)
 	if outRoute.S3Store != nil {
 		if err := p.ExportFiles(outRoute.S3Store); err != nil {
@@ -574,7 +574,7 @@ func (p *Process) notify(err error) {
 		// if there is no command related log recorded
 		if len(p.cmdLog) == 0 {
 			// send an error notification
-			if err = p.SendNotification("ErrorNotification"); err != nil {
+			if err = p.SendNotification(ErrorNotification); err != nil {
 				fmt.Printf("cannot send error notification: %s\n", err)
 			}
 		} else {

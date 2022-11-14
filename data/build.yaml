@@ -28,4 +28,12 @@ functions:
       - art run dispose ox
       - sh minio_down.sh
       - rm minio_down.sh 2> /dev/null
+
+  - name: export
+    run:
+      - art spec export -o s3://localhost:9000/test/v1 -c admin:password
+
+  - name: get-service-id
+    run:
+      - bash -c 'mc admin info --json local | jq -r .info.deploymentID'
 ...

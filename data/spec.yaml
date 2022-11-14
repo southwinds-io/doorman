@@ -1,10 +1,12 @@
 ---
 name: Test
 description: test release specification
+author: SouthWinds Tech Ltd
+license: Apache v2
 info: no much so far
 version: 1.0
 images:
-  IMG_UAR: quay.io/artisan/uar:latest
+  IMG_UAR: quay.io/artisan/artr-basic:latest
 run:
   - package: quay.io/artisan/uar:latest
     function: run

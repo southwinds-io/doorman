@@ -17,32 +17,32 @@ func (p *Process) FindPipeline(pipeName string) (*doorman.Pipeline, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot retrieve pipeline %s: %s", pipeName, err)
 	}
-	pipeConf := result.(doorman.PipelineConf)
-	var inRoutes []doorman.InRoute
+	pipeConf := result.(*doorman.PipelineConf)
+	var inRoutes []*doorman.InRoute
 	for _, route := range pipeConf.InboundRoutes {
 		result, err = p.src.Load(route, new(doorman.InRoute))
 		if err != nil {
 			return nil, fmt.Errorf("cannot retrieve inbound route %s: %s", route, err)
 		}
-		inRoute := result.(doorman.InRoute)
+		inRoute := result.(*doorman.InRoute)
 		inRoutes = append(inRoutes, inRoute)
 	}
-	var outRoutes []doorman.OutRoute
+	var outRoutes []*doorman.OutRoute
 	for _, route := range pipeConf.OutboundRoutes {
 		result, err = p.src.Load(route, new(doorman.OutRoute))
 		if err != nil {
 			return nil, fmt.Errorf("cannot retrieve outbound route %s: %s", route, err)
 		}
-		outRoute := result.(doorman.OutRoute)
+		outRoute := result.(*doorman.OutRoute)
 		outRoutes = append(outRoutes, outRoute)
 	}
-	var cmds []doorman.Command
+	var cmds []*doorman.Command
 	for _, cmd := range pipeConf.Commands {
 		result, err = p.src.Load(cmd, new(doorman.Command))
 		if err != nil {
 			return nil, fmt.Errorf("cannot retrieve command %s: %s", cmd, err)
 		}
-		cmdObj := result.(doorman.Command)
+		cmdObj := result.(*doorman.Command)
 		cmds = append(cmds, cmdObj)
 	}
 	successN, err := p.FindNotification(pipeConf.SuccessNotification)
@@ -70,10 +70,10 @@ func (p *Process) FindPipeline(pipeName string) (*doorman.Pipeline, error) {
 	return pipe, nil
 }
 
-func (p *Process) MatchPipelines(serviceId, bucketName string) ([]doorman.Pipeline, error) {
+func (p *Process) MatchPipelines(serviceId, bucketName string) ([]*doorman.Pipeline, error) {
 	var (
-		pipes    []doorman.Pipeline
-		routes   []doorman.InRoute
+		pipes    []*doorman.Pipeline
+		routes   []*doorman.InRoute
 		pipeline *doorman.Pipeline
 		err      error
 	)
@@ -96,19 +96,19 @@ func (p *Process) MatchPipelines(serviceId, bucketName string) ([]doorman.Pipeli
 		if err = pipeline.Valid(); err != nil {
 			return nil, err
 		}
-		pipes = append(pipes, *pipeline)
+		pipes = append(pipes, pipeline)
 	}
 	return pipes, nil
 }
 
-func (p *Process) FindPipelinesConfigurationWithInboundRoutes() (pipelines []doorman.PipelineConf, err error) {
+func (p *Process) FindPipelinesConfigurationWithInboundRoutes() (pipelines []*doorman.PipelineConf, err error) {
 	var items []any
 	items, err = p.getPipelinesConf()
 	if err != nil {
 		return nil, err
 	}
 	for _, item := range items {
-		pipeline := item.(doorman.PipelineConf)
+		pipeline := item.(*doorman.PipelineConf)
 		if len(pipeline.InboundRoutes) > 0 {
 			pipelines = append(pipelines, pipeline)
 		}

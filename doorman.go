@@ -21,6 +21,7 @@ import (
 	h "southwinds.dev/http"
 	src "southwinds.dev/source_client"
 	"southwinds.dev/types/doorman"
+	"southwinds.dev/types/dproxy"
 	"strings"
 	"time"
 )
@@ -73,12 +74,12 @@ func (d *Doorman) Start() {
 		err        error
 	)
 	for {
-		anyRelease, err = d.proxy.PopOldest("DOORMAN_RELEASE", new(types.Release))
+		anyRelease, err = d.proxy.PopOldest(dproxy.ReleaseType, new(types.Release))
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
 		// if no release was found
-		if anyRelease.(*src.I) == nil {
+		if anyRelease == nil {
 			c.Debug("no release found, retrying later in %v...", interval)
 			// wait for a while
 			time.Sleep(core.GetPollInterval())

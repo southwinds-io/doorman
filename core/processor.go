@@ -19,16 +19,16 @@ type Processor interface {
 	Pipeline(pipe *doorman.Pipeline) error
 
 	// InboundRoute executes an inbound route in a pipeline
-	InboundRoute(pipe *doorman.Pipeline, route doorman.InRoute) error
+	InboundRoute(pipe *doorman.Pipeline, route *doorman.InRoute) error
 
 	// PreImport runs pre import checks
-	PreImport(route doorman.InRoute, err error) error
+	PreImport(route *doorman.InRoute, err error) error
 
 	// Command executes the specified command
-	Command(command doorman.Command) error
+	Command(command *doorman.Command) error
 
 	// OutboundRoute execute the outbound route
-	OutboundRoute(outRoute doorman.OutRoute) error
+	OutboundRoute(outRoute *doorman.OutRoute) error
 
 	// ExportFiles from a specification to an S3 bucket
 	ExportFiles(s3Store *doorman.S3Store) error
