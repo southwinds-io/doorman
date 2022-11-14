@@ -1,0 +1,25 @@
+{
+  "name": "TEST_OUT_ROUTE",
+  "description": "a testing outbound route",
+  "package_registry": {
+    "domain": "localhost:8082",
+    "group": "",
+    "user": "admin",
+    "pwd": "admin"
+  },
+  "image_registry": {
+    "domain": "localhost:5000",
+    "group": "",
+    "user": "admin",
+    "pwd": "admin"
+  },
+  "s3_store": {
+    "bucket_uri": "s3://localhost:9000/ilink2",
+    "user": "admin",
+    "pwd": "password",
+    "partition": "minio",
+    "service": "sqs",
+    "account_id": "_",
+    "resource": "webhook"
+  }
+}

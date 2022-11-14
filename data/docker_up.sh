@@ -1,15 +1,5 @@
 #!/usr/bin/env bash
 
-# launch mongo db
-docker run \
-  --name mongo \
-  -p 27017:27017 \
-  -e "MONGO_INITDB_DATABASE=doorman" \
-  -e "MONGO_INITDB_ROOT_USERNAME=admin" \
-  -e "MONGO_INITDB_ROOT_PASSWORD=admin" \
-  -d \
-  mongo
-
 # launch ultralight registry
 docker run \
     --name uar \

@@ -37,10 +37,10 @@ type HandlerInfo struct {
 
 type Doorman struct {
 	Process ProcFactory
-	src     *src.Client
+	proxy   *src.Client
 }
 
-func NewDoorman(pf ProcFactory) *Doorman {
+func NewDoorman(pf ProcFactory) (*Doorman, error) {
 	// https://textkool.com/en/ascii-art-generator?hl=default&vl=default&font=Broadway%20KB&text=dproxy%0A
 	fmt.Printf(`
 ++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -48,19 +48,18 @@ func NewDoorman(pf ProcFactory) *Doorman {
 |   | | \ / / \ / / \ | |_) | |\/|  / /\  | |\ |   |
 |   |_|_/ \_\_/ \_\_/ |_| \ |_|  | /_/--\ |_| \|   |
 |                                                  |
-+++++++++|  software distribution agent  |++++++++++
++++++++++| automated package distribution |+++++++++
 %s
 
 `, core.Version)
-	s := src.New(core.GetSourceHost(), core.GetSourceUser(), core.GetSourcePwd(), &src.ClientOptions{
-		InsecureSkipVerify: true,
-		Timeout:            0,
-	})
-	s.Logger = new(core.RetryLogger)
+	p, err := getProxyClient()
+	if err != nil {
+		return nil, err
+	}
 	return &Doorman{
 		Process: pf,
-		src:     s,
-	}
+		proxy:   p,
+	}, nil
 }
 
 func (d *Doorman) Start() {
@@ -74,7 +73,7 @@ func (d *Doorman) Start() {
 		err        error
 	)
 	for {
-		anyRelease, err = d.src.PopOldest("DOORMAN_RELEASE", new(types.Release))
+		anyRelease, err = d.proxy.PopOldest("DOORMAN_RELEASE", new(types.Release))
 		if err != nil {
 			log.Fatalf(err.Error())
 		}
@@ -94,7 +93,7 @@ func (d *Doorman) Start() {
 			log.Fatalf("cannot create artisan home: %s, cannot continue", err)
 		}
 		// creates a new process running using the dedicated registry
-		proc, e := D.Process.New(release.DeploymentId, release.BucketName, release.FolderName, artHome, D.src)
+		proc, e := D.Process.New(release.DeploymentId, release.BucketName, release.FolderName, artHome)
 		if e != nil {
 			c.ErrorLogger.Printf("cannot create pipeline processor: %s", e)
 		}
@@ -105,7 +104,7 @@ func (d *Doorman) Start() {
 
 func (d *Doorman) initConfig() error {
 	// pipelines
-	if err := d.src.SetType(doorman.PipelineType, doorman.PipelineConf{
+	if err := d.proxy.SetType(doorman.PipelineType, doorman.PipelineConf{
 		Name:           "sample-pipeline",
 		InboundRoutes:  []string{"sample-inbound-route"},
 		OutboundRoutes: []string{"sample-outbound-route"},
@@ -121,7 +120,7 @@ func (d *Doorman) initConfig() error {
 	}); err != nil {
 		return fmt.Errorf("cannot set pipeline type in source: %s", err)
 	}
-	if err := d.src.SetType(doorman.InboundRouteType, doorman.InRoute{
+	if err := d.proxy.SetType(doorman.InboundRouteType, doorman.InRoute{
 		Name:             "",
 		Description:      "",
 		ServiceHost:      "",
@@ -136,7 +135,7 @@ func (d *Doorman) initConfig() error {
 	}); err != nil {
 		return fmt.Errorf("cannot set inbound route type in source: %s", err)
 	}
-	if err := d.src.SetType(doorman.OutboundRouteType, doorman.OutRoute{
+	if err := d.proxy.SetType(doorman.OutboundRouteType, doorman.OutRoute{
 		Name:        "SAMPLE-OUT-ROUTE",
 		Description: "this is a sample outbound route",
 		PackageRegistry: &doorman.PackageRegistry{
@@ -164,7 +163,7 @@ func (d *Doorman) initConfig() error {
 	}); err != nil {
 		return fmt.Errorf("cannot set outbound route type in source: %s", err)
 	}
-	if err := d.src.SetType(doorman.CommandType, doorman.Command{
+	if err := d.proxy.SetType(doorman.CommandType, doorman.Command{
 		Name:        "SAMPLE-COMMAND",
 		Description: "This is a command run by Doorman",
 		Value:       "scan files",
@@ -173,14 +172,14 @@ func (d *Doorman) initConfig() error {
 	}); err != nil {
 		return fmt.Errorf("cannot set command type in source: %s", err)
 	}
-	if err := d.src.SetType(doorman.NotificationTemplateType, doorman.NotificationTemplate{
+	if err := d.proxy.SetType(doorman.NotificationTemplateType, doorman.NotificationTemplate{
 		Name:    "SAMPLE-SUCCESS-TEMPLATE",
 		Subject: "Hello there",
 		Content: "everything has gone ok",
 	}); err != nil {
 		return fmt.Errorf("cannot set notification template type in source: %s", err)
 	}
-	if err := d.src.SetType(doorman.NotificationType, doorman.Notification{
+	if err := d.proxy.SetType(doorman.NotificationType, doorman.Notification{
 		Name:      "SUCCESSFUL_RELEASE_NOTIFICATION",
 		Recipient: "test@email.com",
 		Type:      "email",
@@ -189,7 +188,7 @@ func (d *Doorman) initConfig() error {
 		return fmt.Errorf("cannot set notification type in source: %s", err)
 	}
 	// catalogue items
-	if err := d.src.SetType(core.CatalogueItemType, core.CatalogueItem{
+	if err := d.proxy.SetType(core.CatalogueItemType, core.CatalogueItem{
 		Name: "",
 		Spec: &release.Spec{
 			Name:        "",
@@ -209,7 +208,7 @@ func (d *Doorman) initConfig() error {
 		return fmt.Errorf("cannot set catalogue item type in source: %s", err)
 	}
 	// commands
-	if err := d.src.SetType(core.ArtisanCommandType, core.Command{
+	if err := d.proxy.SetType(core.ArtisanCommandType, core.Command{
 		Name:        "",
 		Description: "",
 		Package:     "",
@@ -235,7 +234,7 @@ func backoffTime(attempts int) time.Duration {
 }
 
 type ProcFactory interface {
-	New(serviceId, bucketPath, folderName, artHome string, src *src.Client) (core.Processor, error)
+	New(serviceId, bucketPath, folderName, artHome string) (core.Processor, error)
 }
 
 func NewDefaultProcFactory() ProcFactory {
@@ -245,8 +244,8 @@ func NewDefaultProcFactory() ProcFactory {
 type DefaultProcFactory struct {
 }
 
-func (df *DefaultProcFactory) New(serviceId, bucketPath, folderName, artHome string, src *src.Client) (core.Processor, error) {
-	return core.NewProcess(serviceId, bucketPath, folderName, artHome, src)
+func (df *DefaultProcFactory) New(serviceId, bucketPath, folderName, artHome string) (core.Processor, error) {
+	return core.NewProcess(serviceId, bucketPath, folderName, artHome)
 }
 
 // newArtHome generates a new random path for the artisan home
@@ -258,4 +257,29 @@ func newArtHome() (string, error) {
 	}
 	c.Debug("the local registry home is: '%s'\n", path)
 	return path, nil
+}
+
+func getProxyClient() (*src.Client, error) {
+	uri, err := core.GetProxyURI()
+	if err != nil {
+		return nil, err
+	}
+	user, err := core.GetProxyUser()
+	if err != nil {
+		return nil, err
+	}
+	pwd, err := core.GetProxyPwd()
+	if err != nil {
+		return nil, err
+	}
+	insecureSkip, err := core.GetProxyInsecureSkip()
+	if err != nil {
+		return nil, err
+	}
+	s := src.New(uri, user, pwd, &src.ClientOptions{
+		InsecureSkipVerify: insecureSkip,
+		Timeout:            60 * time.Second,
+	})
+	s.Logger = new(core.RetryLogger)
+	return s, nil
 }

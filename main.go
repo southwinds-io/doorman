@@ -16,10 +16,14 @@ import (
 var D *Doorman
 
 func main() {
+	var err error
 	if err := checkDoormanHome(); err != nil {
 		log.Fatalf("cannot launch  doorman, cannot write to file system: %s", err)
 	}
-	D = NewDoorman(NewDefaultProcFactory())
+	D, err = NewDoorman(NewDefaultProcFactory())
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 	D.Start()
 }
 

@@ -52,14 +52,18 @@ type Process struct {
 	src        *src.Client
 }
 
-func NewProcess(serviceId, bucketPath, folderName, artHome string, src *src.Client) (Processor, error) {
+func NewProcess(serviceId, bucketPath, folderName, artHome string) (Processor, error) {
 	p := new(Process)
 	p.serviceId = serviceId
 	p.bucketName = bucketPath
 	p.folderName = folderName
 	p.log = new(bytes.Buffer)
 	p.reg = registry.NewLocalRegistry(artHome)
-	p.src = src
+	s, err := getCfgClient()
+	if err != nil {
+		return nil, fmt.Errorf("cannot create proxy client: %s", err)
+	}
+	p.src = s
 	uri, err := GetNotificationURI()
 	if err != nil {
 		return nil, fmt.Errorf("missing %s", NotificationURI)
@@ -76,8 +80,29 @@ func NewProcess(serviceId, bucketPath, folderName, artHome string, src *src.Clie
 	return p, nil
 }
 
-func (p *Process) Src() *src.Client {
-	return p.src
+func getCfgClient() (*src.Client, error) {
+	uri, err := GetCfgURI()
+	if err != nil {
+		return nil, err
+	}
+	user, err := GetCfgUser()
+	if err != nil {
+		return nil, err
+	}
+	pwd, err := GetCfgPwd()
+	if err != nil {
+		return nil, err
+	}
+	insecureSkip, err := GetCfgInsecureSkip()
+	if err != nil {
+		return nil, err
+	}
+	s := src.New(uri, user, pwd, &src.ClientOptions{
+		InsecureSkipVerify: insecureSkip,
+		Timeout:            60 * time.Second,
+	})
+	s.Logger = new(RetryLogger)
+	return s, nil
 }
 
 // Info logger
@@ -453,8 +478,8 @@ func (p *Process) BeforeComplete(pipe *doorman.Pipeline) error {
 	// catalogue submission
 	if p.pipe.CMDB != nil {
 		if p.pipe.CMDB.Catalogue {
-			if len(os.Getenv(OxWapiUri)) == 0 {
-				return fmt.Errorf("cannot submit release %s %s to catalogue, OX_WAPI_URI is not defined", p.spec.Name, p.spec.Version)
+			if len(os.Getenv(ConfigSourceUri)) == 0 {
+				return fmt.Errorf("cannot submit release %s %s to catalogue, %s is not defined", p.spec.Name, p.spec.Version, ConfigSourceUri)
 			}
 			if err := p.submitSpec(pipe.CMDB); err != nil {
 				return fmt.Errorf("cannot submit spec '%s' version '%s' to the cmdb: %s", p.spec.Name, p.spec.Version, err)

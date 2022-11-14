@@ -1,0 +1,5 @@
+{
+  "name": "ISSUE_TEMPLATE",
+  "subject": "Issue on new release \u003c\u003crelease-name\u003e\u003e",
+  "content": "   A new release has been published but failed ingestion:\n   \u003c\u003cissue-log\u003e\u003e\n"
+}

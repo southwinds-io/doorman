@@ -10,29 +10,38 @@ package core
 import (
 	"fmt"
 	"github.com/joho/godotenv"
-	"log"
 	"os"
 	"strconv"
 	"time"
 )
 
 const (
-	NotificationURI          = "DOORMAN_NOTIFICATION_URI"
-	NotificationUser         = "DOORMAN_NOTIFICATION_USER"
-	NotificationPwd          = "DOORMAN_NOTIFICATION_PWD"
-	PollIntervalSecs         = "DOORMAN_POLL_INTERVAL_SECS"
-	OxWapiUri                = "OX_WAPI_URI"
-	OxWapiUser               = "OX_WAPI_USER"
-	OxWapiPwd                = "OX_WAPI_PWD"
-	OxWapiInsecureSkipVerify = "OX_WAPI_INSECURE_SKIP_VERIFY"
-	ArtRegUser               = "ART_REG_USER"
-	ArtRegPwd                = "ART_REG_PWD"
-	SourceHost               = "DOORMAN_SRC_HOST"
-	SourceUser               = "DOORMAN_SRC_USER"
-	SourcePwd                = "DOORMAN_SRC_PWD"
-	S3URI                    = "DOORMAN_S3_URI"
-	S3User                   = "DOORMAN_S3_USER"
-	S3Pwd                    = "DOORMAN_S3_PWD"
+	// notification service settings
+	NotificationURI  = "DOORMAN_NOTIFICATION_URI"
+	NotificationUser = "DOORMAN_NOTIFICATION_USER"
+	NotificationPwd  = "DOORMAN_NOTIFICATION_PWD"
+
+	// artisan registry settings
+	ArtRegUser = "ART_REG_USER"
+	ArtRegPwd  = "ART_REG_PWD"
+
+	// proxy settings
+	ProxySourceUri          = "DOORMAN_PROXY_SRC_URI"
+	ProxySourceUser         = "DOORMAN_PROXY_SRC_USER"
+	ProxySourcePwd          = "DOORMAN_PROXY_SRC_PWD"
+	ProxySourceInsecureSkip = "DOORMAN_PROXY_SRC_INSECURE_SKIP"
+	ProxyPollIntervalSecs   = "DOORMAN_PROXY_POLL_INTERVAL_SECS"
+
+	// pipeline configuration settings
+	ConfigSourceUri          = "DOORMAN_CFG_SRC_URI"
+	ConfigSourceUser         = "DOORMAN_CFG_SRC_USER"
+	ConfigSourcePwd          = "DOORMAN_CFG_SRC_PWD"
+	ConfigSourceInsecureSkip = "DOORMAN_CFG_SRC_INSECURE_SKIP"
+
+	// S3 service settings for
+	LogsS3URI  = "DOORMAN_LOGS_S3_URI"
+	LogsS3User = "DOORMAN_LOGS_S3_USER"
+	LogsS3Pwd  = "DOORMAN_LOGS_S3_PWD"
 )
 
 func init() {
@@ -57,7 +66,7 @@ func getBoolean(key string) (bool, error) {
 }
 
 func GetPollInterval() time.Duration {
-	value, _ := strconv.Atoi(os.Getenv(PollIntervalSecs))
+	value, _ := strconv.Atoi(os.Getenv(ProxyPollIntervalSecs))
 	if value == 0 {
 		value = 60
 	}
@@ -65,39 +74,47 @@ func GetPollInterval() time.Duration {
 }
 
 func GetS3URI() string {
-	return os.Getenv(S3URI)
+	return os.Getenv(LogsS3URI)
 }
 
 func GetS3User() (string, error) {
-	return getString(S3User)
+	return getString(LogsS3User)
 }
 
 func GetS3Pwd() (string, error) {
-	return getString(S3Pwd)
+	return getString(LogsS3Pwd)
 }
 
-func GetSourceHost() string {
-	value, err := getString(SourceHost)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return value
+func GetProxyURI() (string, error) {
+	return getString(ProxySourceUri)
 }
 
-func GetSourceUser() string {
-	value, err := getString(SourceUser)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return value
+func GetProxyUser() (string, error) {
+	return getString(ProxySourceUser)
 }
 
-func GetSourcePwd() string {
-	value, err := getString(SourcePwd)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return value
+func GetProxyPwd() (string, error) {
+	return getString(ProxySourcePwd)
+}
+
+func GetProxyInsecureSkip() (bool, error) {
+	return getBoolean(ProxySourceInsecureSkip)
+}
+
+func GetCfgURI() (string, error) {
+	return getString(ConfigSourceUri)
+}
+
+func GetCfgUser() (string, error) {
+	return getString(ConfigSourceUser)
+}
+
+func GetCfgPwd() (string, error) {
+	return getString(ConfigSourcePwd)
+}
+
+func GetCfgInsecureSkip() (bool, error) {
+	return getBoolean(ConfigSourceInsecureSkip)
 }
 
 func GetNotificationURI() (string, error) {
@@ -110,22 +127,6 @@ func GetNotificationUser() (string, error) {
 
 func GetNotificationPwd() (string, error) {
 	return getString(NotificationPwd)
-}
-
-func GetOxWapiUri() (string, error) {
-	return getString(OxWapiUri)
-}
-
-func GetOxWapiUser() (string, error) {
-	return getString(OxWapiUser)
-}
-
-func GetOxWapiPwd() (string, error) {
-	return getString(OxWapiPwd)
-}
-
-func GetOxWapiInsecureSkipVerify() (bool, error) {
-	return getBoolean(OxWapiInsecureSkipVerify)
 }
 
 func GetArRegUser() (string, error) {

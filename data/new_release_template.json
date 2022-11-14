@@ -1,0 +1,5 @@
+{
+  "name": "NEW_RELEASE_TEMPLATE",
+  "subject": "New Release \u003c\u003crelease-name\u003e\u003e is available",
+  "content": "   A new release has been published and is now available to deploy.\n   Available artefacts:\n   \u003c\u003crelease-artefacts\u003e\u003e"
+}

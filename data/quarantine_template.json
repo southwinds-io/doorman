@@ -1,0 +1,5 @@
+{
+  "name": "QUARANTINE_TEMPLATE",
+  "subject": "New Release \u003c\u003crelease-name\u003e\u003e has been quarantined",
+  "content": "A new release has been published and but has been quarantined.\n   Error log:\n   \u003c\u003ccommand-log\u003e\u003e"
+}
