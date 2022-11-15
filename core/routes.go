@@ -42,20 +42,6 @@ func (p *Process) MatchInboundRoutes(serviceId, bucketName string) (routes []*do
 	return routes, nil
 }
 
-func (p *Process) FindInboundRoutesByWebHookToken(token string) (routes []*doorman.InRoute, err error) {
-	items, err := p.getInRoutes()
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range items {
-		route := item.(*doorman.InRoute)
-		if strings.EqualFold(route.WebhookToken, token) {
-			routes = append(routes, route)
-		}
-	}
-	return routes, nil
-}
-
 func (p *Process) FindAllInRoutes() (routes []*doorman.InRoute, err error) {
 	items, err := p.getInRoutes()
 	if err != nil {

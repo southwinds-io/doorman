@@ -31,12 +31,14 @@ type Doorman struct {
 func NewDoorman(pf core.ProcFactory) (*Doorman, error) {
 	// https://textkool.com/en/ascii-art-generator?hl=default&vl=default&font=Broadway%20KB&text=dproxy%0A
 	fmt.Printf(`
-++++++++++++++++++++++++++++++++++++++++++++++++++++
-|    ___   ___   ___   ___   _   _   __    _   _   |
-|   | | \ / / \ / / \ | |_) | |\/|  / /\  | |\ |   |
-|   |_|_/ \_\_/ \_\_/ |_| \ |_|  | /_/--\ |_| \|   |
-|                                                  |
-+++++++++| automated package distribution |+++++++++
++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+|        _                                            |
+|     __| | ___   ___  _ __ _ __ ___   __ _ _ __      |
+|    / _`+"`"+` |/ _ \ / _ \| '__| '_ `+"`"+` _ \ / _`+"`"+` | '_ \     |
+|   | (_| | (_) | (_) | |  | | | | | | (_| | | | |    |
+|    \__,_|\___/ \___/|_|  |_| |_| |_|\__,_|_| |_|    |
+|                                                     |
+++++++++++++++++++| Release Manager |++++++++++++++++++
 %s
 
 `, core.Version)
@@ -109,17 +111,14 @@ func (d *Doorman) initConfig() error {
 		return fmt.Errorf("cannot set pipeline type in source: %s", err)
 	}
 	if err := d.proxy.SetType(doorman.InboundRouteType, doorman.InRoute{
-		Name:             "",
-		Description:      "",
-		ServiceHost:      "",
-		ServiceId:        "",
-		BucketName:       "",
-		User:             "",
-		Pwd:              "",
-		Verify:           false,
-		WebhookToken:     "",
-		WebhookWhitelist: nil,
-		Filter:           "",
+		Name:        "",
+		Description: "",
+		ServiceHost: "",
+		ServiceId:   "",
+		BucketName:  "",
+		User:        "",
+		Pwd:         "",
+		Publishers:  []string{"acme@example.com"},
 	}); err != nil {
 		return fmt.Errorf("cannot set inbound route type in source: %s", err)
 	}
