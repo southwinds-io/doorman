@@ -387,7 +387,7 @@ func (p *Process) ExportFiles(s3Store *doorman.S3Store) error {
 			TargetUri:     targetURI,
 			TargetCreds:   s3Store.Creds(),
 			ArtHome:       p.artHome(),
-		})
+		}, s3Store.OpenPolicy, s3Store.RunPolicy, s3Store.SignPolicy)
 	if err != nil {
 		return p.Error("cannot export spec to %s: %s", targetURI, err)
 	}
@@ -408,9 +408,9 @@ func (p *Process) ImportFiles() error {
 	// import spec in tmp folder
 	_, err = release.ImportSpec(
 		release.ImportOptions{
-			TargetUri: p.tmp,
-			ArtHome:   p.artHome(),
-			VProc:     p.vProc,
+			TargetUri:  p.tmp,
+			ArtHome:    p.artHome(),
+			VerifyProc: p.vProc,
 		})
 	if err != nil {
 		return p.Error("cannot import spec: %s", err)
