@@ -49,9 +49,10 @@ type Process struct {
 	notif      *notify.Client
 	src        *src.Client
 	vProc      data.VProc
+	bProc      build.BProc
 }
 
-func NewProcess(serviceId, bucketPath, folderName, artHome string, vProc data.VProc) (Processor, error) {
+func NewProcess(serviceId, bucketPath, folderName, artHome string, vProc data.VProc, bProc build.BProc) (Processor, error) {
 	p := new(Process)
 	p.serviceId = serviceId
 	p.bucketName = bucketPath
@@ -59,6 +60,7 @@ func NewProcess(serviceId, bucketPath, folderName, artHome string, vProc data.VP
 	p.log = new(bytes.Buffer)
 	p.reg = registry.NewLocalRegistry(artHome)
 	p.vProc = vProc
+	p.bProc = bProc
 	s, err := getCfgClient()
 	if err != nil {
 		return nil, fmt.Errorf("cannot create proxy client: %s", err)
@@ -387,6 +389,7 @@ func (p *Process) ExportFiles(s3Store *doorman.S3Store) error {
 			TargetUri:     targetURI,
 			TargetCreds:   s3Store.Creds(),
 			ArtHome:       p.artHome(),
+			BuildProc:     p.bProc,
 		}, s3Store.OpenPolicy, s3Store.RunPolicy, s3Store.SignPolicy)
 	if err != nil {
 		return p.Error("cannot export spec to %s: %s", targetURI, err)

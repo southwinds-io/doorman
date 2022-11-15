@@ -5,7 +5,7 @@
   to be licensed under the same terms as the rest of the code.
 */
 
-package main
+package core
 
 import (
 	"fmt"
@@ -15,7 +15,6 @@ import (
 	c "southwinds.dev/artisan/core"
 	"southwinds.dev/artisan/release"
 	"southwinds.dev/d-proxy/types"
-	"southwinds.dev/doorman/core"
 	src "southwinds.dev/source_client"
 	"southwinds.dev/types/doorman"
 	"southwinds.dev/types/dproxy"
@@ -24,11 +23,11 @@ import (
 )
 
 type Doorman struct {
-	Process core.ProcFactory
+	Process ProcFactory
 	proxy   *src.Client
 }
 
-func NewDoorman(pf core.ProcFactory) (*Doorman, error) {
+func NewDoorman(pf ProcFactory) (*Doorman, error) {
 	// https://textkool.com/en/ascii-art-generator?hl=default&vl=default&font=Broadway%20KB&text=dproxy%0A
 	fmt.Printf(`
 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -41,7 +40,7 @@ func NewDoorman(pf core.ProcFactory) (*Doorman, error) {
 ++++++++++++++++++| Release Manager |++++++++++++++++++
 %s
 
-`, core.Version)
+`, Version)
 	p, err := getProxyClient()
 	if err != nil {
 		return nil, err
@@ -53,7 +52,7 @@ func NewDoorman(pf core.ProcFactory) (*Doorman, error) {
 }
 
 func (d *Doorman) Start() {
-	interval := core.GetPollInterval()
+	interval := GetPollInterval()
 	if err := d.initConfig(); err != nil {
 		log.Fatalf(err.Error())
 	}
@@ -71,7 +70,7 @@ func (d *Doorman) Start() {
 		if anyRelease == nil {
 			c.Debug("no release found, retrying later in %v...", interval)
 			// wait for a while
-			time.Sleep(core.GetPollInterval())
+			time.Sleep(GetPollInterval())
 			// then try again
 			continue
 		} else {
@@ -83,7 +82,7 @@ func (d *Doorman) Start() {
 			log.Fatalf("cannot create artisan home: %s, cannot continue", err)
 		}
 		// creates a new process running using the dedicated registry
-		proc, e := D.Process.New(release.DeploymentId, release.BucketName, release.FolderName, artHome)
+		proc, e := d.Process.New(release.DeploymentId, release.BucketName, release.FolderName, artHome)
 		if e != nil {
 			c.ErrorLogger.Printf("cannot create pipeline processor: %s", e)
 		}
@@ -178,7 +177,7 @@ func (d *Doorman) initConfig() error {
 		return fmt.Errorf("cannot set notification type in source: %s", err)
 	}
 	// catalogue items
-	if err := d.proxy.SetType(core.CatalogueItemType, core.CatalogueItem{
+	if err := d.proxy.SetType(CatalogueItemType, CatalogueItem{
 		Name: "",
 		Spec: &release.Spec{
 			Name:        "",
@@ -198,7 +197,7 @@ func (d *Doorman) initConfig() error {
 		return fmt.Errorf("cannot set catalogue item type in source: %s", err)
 	}
 	// commands
-	if err := d.proxy.SetType(core.ArtisanCommandType, core.Command{
+	if err := d.proxy.SetType(ArtisanCommandType, Command{
 		Name:        "",
 		Description: "",
 		Package:     "",
@@ -225,19 +224,19 @@ func newArtHome() (string, error) {
 }
 
 func getProxyClient() (*src.Client, error) {
-	uri, err := core.GetProxyURI()
+	uri, err := GetProxyURI()
 	if err != nil {
 		return nil, err
 	}
-	user, err := core.GetProxyUser()
+	user, err := GetProxyUser()
 	if err != nil {
 		return nil, err
 	}
-	pwd, err := core.GetProxyPwd()
+	pwd, err := GetProxyPwd()
 	if err != nil {
 		return nil, err
 	}
-	insecureSkip, err := core.GetProxyInsecureSkip()
+	insecureSkip, err := GetProxyInsecureSkip()
 	if err != nil {
 		return nil, err
 	}
@@ -245,6 +244,6 @@ func getProxyClient() (*src.Client, error) {
 		InsecureSkipVerify: insecureSkip,
 		Timeout:            60 * time.Second,
 	})
-	s.Logger = new(core.RetryLogger)
+	s.Logger = new(RetryLogger)
 	return s, nil
 }

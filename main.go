@@ -14,18 +14,15 @@ import (
 	"southwinds.dev/doorman/core"
 )
 
-var D *Doorman
-
 func main() {
-	var err error
 	if err := checkDoormanHome(); err != nil {
 		log.Fatalf("cannot launch  doorman, cannot write to file system: %s", err)
 	}
-	D, err = NewDoorman(core.NewDefaultProcFactory())
+	d, err := core.NewDoorman(core.NewDefaultProcFactory())
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	D.Start()
+	d.Start()
 }
 
 func checkDoormanHome() error {

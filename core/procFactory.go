@@ -19,5 +19,5 @@ type DefaultProcFactory struct {
 }
 
 func (df *DefaultProcFactory) New(serviceId, bucketPath, folderName, artHome string) (Processor, error) {
-	return NewProcess(serviceId, bucketPath, folderName, artHome, nil)
+	return NewProcess(serviceId, bucketPath, folderName, artHome, nil, nil)
 }
