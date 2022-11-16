@@ -17,9 +17,6 @@
     "bucket_uri": "s3://localhost:9000/ilink2",
     "user": "admin",
     "pwd": "password",
-    "partition": "minio",
-    "service": "sqs",
-    "account_id": "_",
-    "resource": "webhook"
+    "webhook_event": false
   }
 }

@@ -7,7 +7,7 @@ docker run \
     -e "OX_ADMIN_USER=admin" \
     -e "OX_ADMIN_PWD=admin" \
     -d \
-    quay.io/artisan/uar
+    quay.io/artisan/artr-basic
 
 # launch container registry
 docker run \

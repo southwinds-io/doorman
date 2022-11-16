@@ -8,6 +8,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"path/filepath"
 	artCore "southwinds.dev/artisan/core"
@@ -18,7 +19,7 @@ func main() {
 	if err := checkDoormanHome(); err != nil {
 		log.Fatalf("cannot launch  doorman, cannot write to file system: %s", err)
 	}
-	d, err := core.NewDoorman(core.NewDefaultProcFactory())
+	d, err := core.NewDoorman(core.NewDefaultProcFactory(), "")
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
@@ -29,3 +30,15 @@ func checkDoormanHome() error {
 	path := filepath.Join(artCore.HomeDir(), ".doorman")
 	return artCore.EnsureRegistryPath(path)
 }
+
+var header = fmt.Sprintf(`
++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+|        _                                            |
+|     __| | ___   ___  _ __ _ __ ___   __ _ _ __      |
+|    / _`+"`"+` |/ _ \ / _ \| '__| '_ `+"`"+` _ \ / _`+"`"+` | '_ \     |
+|   | (_| | (_) | (_) | |  | | | | | | (_| | | | |    |
+|    \__,_|\___/ \___/|_|  |_| |_| |_|\__,_|_| |_|    |
+|                                                     |
+++++++++++++++++++| Release Manager |++++++++++++++++++
+%s
+`, core.Version)

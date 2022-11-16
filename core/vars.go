@@ -31,7 +31,7 @@ type CatalogueItem struct {
 	Attributes map[string]interface{}
 }
 
-func (i *CatalogueItem) Validate() error {
+func (i CatalogueItem) Validate() error {
 	return nil
 }
 
@@ -46,6 +46,6 @@ type Command struct {
 	Tag         []string
 }
 
-func (i *Command) Validate() error {
+func (i Command) Validate() error {
 	return nil
 }

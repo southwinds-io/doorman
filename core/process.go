@@ -36,31 +36,31 @@ const (
 )
 
 type Process struct {
-	serviceId  string
-	bucketName string
-	folderName string
-	tmp        string
-	log        *bytes.Buffer
-	reg        *registry.LocalRegistry
-	spec       *release.Spec
-	jobNo      string
-	cmdLog     string
-	pipe       *doorman.Pipeline
-	notif      *notify.Client
-	src        *src.Client
-	vProc      data.VProc
-	bProc      build.BProc
+	serviceId      string
+	bucketName     string
+	folderName     string
+	tmp            string
+	log            *bytes.Buffer
+	reg            *registry.LocalRegistry
+	spec           *release.Spec
+	jobNo          string
+	cmdLog         string
+	pipe           *doorman.Pipeline
+	notif          *notify.Client
+	src            *src.Client
+	verifyOnImport data.VerifyHandler
+	decryptOnRun   data.VerifyHandler
+	encryptOnBuild build.BuildHandler
+	logRun         data.RunHandler
 }
 
-func NewProcess(serviceId, bucketPath, folderName, artHome string, vProc data.VProc, bProc build.BProc) (Processor, error) {
+func newProcess(serviceId, bucketPath, folderName, artHome string) (*Process, error) {
 	p := new(Process)
 	p.serviceId = serviceId
 	p.bucketName = bucketPath
 	p.folderName = folderName
 	p.log = new(bytes.Buffer)
 	p.reg = registry.NewLocalRegistry(artHome)
-	p.vProc = vProc
-	p.bProc = bProc
 	s, err := getCfgClient()
 	if err != nil {
 		return nil, fmt.Errorf("cannot create proxy client: %s", err)
@@ -79,6 +79,25 @@ func NewProcess(serviceId, bucketPath, folderName, artHome string, vProc data.VP
 		return nil, fmt.Errorf("missing %s", NotificationPwd)
 	}
 	p.notif = notify.New(uri, user, pwd)
+	return p, nil
+}
+
+func New(serviceId, bucketPath, folderName, artHome string) (Processor, error) {
+	p, err := newProcess(serviceId, bucketPath, folderName, artHome)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func NewWithHandlers(serviceId, bucketPath, folderName, artHome string, verifyOnImport data.VerifyHandler, decryptOnRun data.VerifyHandler, encryptOnBuild build.BuildHandler, logOnRun data.RunHandler) (Processor, error) {
+	p, err := newProcess(serviceId, bucketPath, folderName, artHome)
+	if err != nil {
+		return nil, err
+	}
+	p.verifyOnImport = verifyOnImport
+	p.decryptOnRun = decryptOnRun
+	p.encryptOnBuild = encryptOnBuild
 	return p, nil
 }
 
@@ -189,14 +208,15 @@ func (p *Process) run() {
 				p.notify(jobErr)
 			}
 			p.notify(err)
+		} else {
+			// if no error, record the job as completed passing the logs
+			jobErr := LogJob(pipe, p, jobNo, &startedTime, "succeeded")
+			if jobErr != nil {
+				p.notify(jobErr)
+			}
+			// notify success
+			p.notify(nil)
 		}
-		// if no error, record the job as completed passing the logs
-		jobErr := LogJob(pipe, p, jobNo, &startedTime, "succeeded")
-		if jobErr != nil {
-			p.notify(jobErr)
-		}
-		// notify success
-		p.notify(nil)
 	}
 }
 
@@ -244,6 +264,15 @@ func (p *Process) InboundRoute(pipe *doorman.Pipeline, route *doorman.InRoute) e
 		})
 	if err != nil {
 		return p.Error("cannot download specification: %s\n", err)
+	}
+	if spec.OsPackages == nil {
+		spec.OsPackages = map[string]map[string]string{}
+	}
+	if spec.Images == nil {
+		spec.Images = map[string]string{}
+	}
+	if spec.Packages == nil {
+		spec.Packages = map[string]string{}
 	}
 	p.spec = spec
 	p.Info("downloading specification: complete")
@@ -378,8 +407,13 @@ func (p *Process) ExportFiles(s3Store *doorman.S3Store) error {
 		return p.Error("cannot load spec.yaml from working folder: %s", err)
 	}
 	targetURI := fmt.Sprintf("%s/%s", s3Store.BucketURI, p.folderName)
+	var arn *notification.Arn
+	// only creates the webhook in the target bucket if specified
+	if s3Store.WebhookEvent {
+		arn = getARN(s3Store)
+	}
 	// ensure bucket exists and a notification is set up if bucket is being created
-	_, err = resx.EnsureBucketNotification(targetURI, s3Store.Creds(), "spec.yaml", getARN(s3Store))
+	_, err = resx.EnsureBucketNotification(targetURI, s3Store.Creds(), "spec.yaml", arn)
 	if err != nil {
 		return p.Error("cannot ensure bucket existence for %s: %s", targetURI, err)
 	}
@@ -389,8 +423,9 @@ func (p *Process) ExportFiles(s3Store *doorman.S3Store) error {
 			TargetUri:     targetURI,
 			TargetCreds:   s3Store.Creds(),
 			ArtHome:       p.artHome(),
-			BuildProc:     p.bProc,
-		}, s3Store.OpenPolicy, s3Store.RunPolicy, s3Store.SignPolicy)
+			BuildProc:     p.encryptOnBuild,
+			LogRunHandler: p.logRun,
+		})
 	if err != nil {
 		return p.Error("cannot export spec to %s: %s", targetURI, err)
 	}
@@ -411,9 +446,10 @@ func (p *Process) ImportFiles() error {
 	// import spec in tmp folder
 	_, err = release.ImportSpec(
 		release.ImportOptions{
-			TargetUri:  p.tmp,
-			ArtHome:    p.artHome(),
-			VerifyProc: p.vProc,
+			TargetUri:             p.tmp,
+			ArtHome:               p.artHome(),
+			VerifyOnImportHandler: p.verifyOnImport,
+			DecryptOnRunHandler:   p.decryptOnRun,
 		})
 	if err != nil {
 		return p.Error("cannot import spec: %s", err)
@@ -439,7 +475,7 @@ func (p *Process) SendNotification(nType NotificationType) error {
 	case ErrorNotification:
 		n = p.pipe.ErrorNotification
 	default:
-		return fmt.Errorf("notification type %s is not supported", nType)
+		return fmt.Errorf("notification type '%s' is not supported", nType)
 	}
 	// merges release-name
 	subject := strings.ReplaceAll(n.Subject, "<<release-name>>", fmt.Sprintf("%s:%s", p.bucketName, p.folderName))
@@ -583,14 +619,14 @@ func (p *Process) notify(err error) {
 			}
 		} else {
 			// otherwise send a command failed notification
-			if err = p.SendNotification("CmdFailedNotification"); err != nil {
+			if err = p.SendNotification(CmdFailedNotification); err != nil {
 				fmt.Printf("cannot send command failed notification: %s\n", err)
 			}
 			p.cmdLog = ""
 		}
 	} else { // if there is not an error
 		// sends a success notification
-		if err = p.SendNotification("SuccessNotification"); err != nil {
+		if err = p.SendNotification(SuccessNotification); err != nil {
 			fmt.Printf("cannot send success notification: %s\n", err)
 		}
 	}
@@ -624,7 +660,7 @@ func (p *Process) submitSpec(cmdb *doorman.CMDB) error {
 			p.Warn("cannot unmarshal spec to map: %s", err)
 		}
 	}
-	catalogueItem := &CatalogueItem{
+	catalogueItem := CatalogueItem{
 		Name:       catalogueName(p.spec),
 		Spec:       p.spec,
 		Tags:       cmdb.Tag,
@@ -659,7 +695,7 @@ func (p *Process) submitSpecFx(cmdb *doorman.CMDB) error {
 				// if the event is in the spec
 				if strings.EqualFold(run.Event, event) {
 					found = true
-					cmd := &Command{
+					cmd := Command{
 						Name:        fmt.Sprintf("ARTISAN CMD: %s", run.Function),
 						Description: fmt.Sprintf("%s - %s - %s", run.Package, run.Function, run.Event),
 						Package:     run.Package,

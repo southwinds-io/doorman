@@ -27,20 +27,9 @@ type Doorman struct {
 	proxy   *src.Client
 }
 
-func NewDoorman(pf ProcFactory) (*Doorman, error) {
-	// https://textkool.com/en/ascii-art-generator?hl=default&vl=default&font=Broadway%20KB&text=dproxy%0A
-	fmt.Printf(`
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++
-|        _                                            |
-|     __| | ___   ___  _ __ _ __ ___   __ _ _ __      |
-|    / _`+"`"+` |/ _ \ / _ \| '__| '_ `+"`"+` _ \ / _`+"`"+` | '_ \     |
-|   | (_| | (_) | (_) | |  | | | | | | (_| | | | |    |
-|    \__,_|\___/ \___/|_|  |_| |_| |_|\__,_|_| |_|    |
-|                                                     |
-++++++++++++++++++| Release Manager |++++++++++++++++++
-%s
-
-`, Version)
+func NewDoorman(pf ProcFactory, header string) (*Doorman, error) {
+	// https://textkool.com/en/ascii-art-generator?hl=default&vl=default&font=Broadway%20KB&text=doorman%0A
+	fmt.Println(header)
 	p, err := getProxyClient()
 	if err != nil {
 		return nil, err
@@ -110,14 +99,14 @@ func (d *Doorman) initConfig() error {
 		return fmt.Errorf("cannot set pipeline type in source: %s", err)
 	}
 	if err := d.proxy.SetType(doorman.InboundRouteType, doorman.InRoute{
-		Name:        "",
-		Description: "",
-		ServiceHost: "",
-		ServiceId:   "",
-		BucketName:  "",
-		User:        "",
-		Pwd:         "",
-		Publishers:  []string{"acme@example.com"},
+		Name:           "",
+		Description:    "",
+		ServiceHost:    "",
+		ServiceId:      "",
+		BucketName:     "",
+		User:           "",
+		Pwd:            "",
+		AllowedAuthors: []string{"acme@example.com"},
 	}); err != nil {
 		return fmt.Errorf("cannot set inbound route type in source: %s", err)
 	}
@@ -137,17 +126,15 @@ func (d *Doorman) initConfig() error {
 			Pwd:    "sample-pwd",
 		},
 		S3Store: &doorman.S3Store{
-			BucketURI:  "s3.sample.com/sample-bucket",
-			User:       "sample-user",
-			Pwd:        "sample-pwd",
-			Partition:  "",
-			Service:    "",
-			Region:     "",
-			AccountID:  "",
-			Resource:   "",
-			OpenPolicy: "",
-			RunPolicy:  ".*",
-			SignPolicy: "",
+			BucketURI:    "s3.sample.com/sample-bucket",
+			User:         "sample-user",
+			Pwd:          "sample-pwd",
+			WebhookEvent: false,
+			Partition:    "",
+			Service:      "",
+			Region:       "",
+			AccountID:    "",
+			Resource:     "",
 		},
 	}); err != nil {
 		return fmt.Errorf("cannot set outbound route type in source: %s", err)

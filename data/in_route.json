@@ -6,10 +6,6 @@
   "bucket_name": "*",
   "user": "admin",
   "pwd": "password",
-  "verify": false,
-  "webhook_token": "JFkxnsn++02UilVkYFFC9w==",
-  "webhook_whitelist": [
-    "127.0.0.1"
-  ],
-  "filter": "*."
+  "allowed_authors": [],
+  "sign": false
 }

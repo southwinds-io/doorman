@@ -28,6 +28,7 @@ func LogJob(pipeline *doorman.Pipeline, process *Process, jobNo string, started 
 		Status:    status,
 		Started:   started,
 		Completed: &completed,
+		Log:       process.logs(),
 	}
 	uri := GetS3URI()
 	// if an S3 URI has been defined
@@ -40,14 +41,17 @@ func LogJob(pipeline *doorman.Pipeline, process *Process, jobNo string, started 
 		if err != nil {
 			return err
 		}
+		target := fmt.Sprintf("%s/%s-%s.json", uri, time.Now().Format(time.RFC3339), status)
 		// write the job data to S3
+		if _, err = os.EnsureBucketNotification(target, fmt.Sprintf("%s:%s", user, pwd), "", nil); err != nil {
+			core.WarningLogger.Printf("cannot create logs bucket: %s", err)
+		}
 		return os.WriteFile(
 			job.Bytes(),
-			fmt.Sprintf("%s/%s", uri, time.Now().Format(time.RFC3339)),
+			target,
 			fmt.Sprintf("%s:%s", user, pwd))
 	} else {
-		// otherwise write to stdout
-		core.InfoLogger.Printf("%s\n", job)
+		core.InfoLogger.Printf("s3 logs URI not set: will not post logs")
 	}
 	return nil
 }

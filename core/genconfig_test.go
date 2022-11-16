@@ -27,17 +27,14 @@ func TestGenConfig(t *testing.T) {
 	s.Logger = new(RetryLogger)
 	// var err error
 	testInRoute := d.InRoute{
-		Name:             "TEST_IN_ROUTE",
-		Description:      "a testing inbound route",
-		ServiceHost:      "s3://127.0.0.1:9000",
-		ServiceId:        "415edcb3-16db-4f6d-828a-48c5bc33e01b",
-		BucketName:       "*",
-		User:             "admin",
-		Pwd:              "password",
-		Verify:           false,
-		WebhookToken:     "JFkxnsn++02UilVkYFFC9w==",
-		WebhookWhitelist: []string{"127.0.0.1"},
-		Filter:           "*.",
+		Name:           "TEST_IN_ROUTE",
+		Description:    "a testing inbound route",
+		ServiceHost:    "s3://127.0.0.1:9000",
+		ServiceId:      "55913ea4-454a-4d15-a8d4-2b669154ab77",
+		BucketName:     "*",
+		User:           "admin",
+		Pwd:            "password",
+		AllowedAuthors: []string{},
 	}
 	b, _ := json.MarshalIndent(testInRoute, "", "  ")
 	os.WriteFile("../data/in_route.json", b, os.ModePerm)
@@ -59,14 +56,15 @@ func TestGenConfig(t *testing.T) {
 			Pwd:    "admin",
 		},
 		S3Store: &d.S3Store{
-			BucketURI: "s3://localhost:9000/ilink2",
-			User:      "admin",
-			Pwd:       "password",
-			Partition: "minio",
-			Service:   "sqs",
-			Region:    "",
-			AccountID: "_",
-			Resource:  "webhook",
+			BucketURI:    "s3://localhost:9000/ilink2",
+			User:         "admin",
+			Pwd:          "password",
+			WebhookEvent: false,
+			// Partition: "minio",
+			// Service:   "sqs",
+			// Region:    "",
+			// AccountID: "_",
+			// Resource:  "webhook",
 		},
 	}
 	b, _ = json.MarshalIndent(testOutRoute, "", "  ")
