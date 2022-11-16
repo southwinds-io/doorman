@@ -8,7 +8,6 @@
 package core
 
 import (
-	"errors"
 	"southwinds.dev/artisan/data"
 	"southwinds.dev/artisan/release"
 )
@@ -17,11 +16,6 @@ const (
 	Name               = "doorman"
 	ArtisanCommandType = "ARTISAN-COMMAND"
 	CatalogueItemType  = "CATALOGUE-ITEM"
-)
-
-var (
-	ErrDocumentAlreadyExists = errors.New("mongo: the document already exists")
-	ErrDocumentNotFound      = errors.New("mongo: the document was not found")
 )
 
 type CatalogueItem struct {
